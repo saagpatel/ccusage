@@ -452,12 +452,18 @@ fn parse_claude_daily_command(
 ) -> Result<Command, String> {
     let mut args = DailyArgs {
         shared,
+        sections: None,
         instances: false,
         project: None,
         project_aliases: None,
     };
     config.apply_daily_args(&mut args);
     while parser.peek().is_some() {
+        if matches!(parser.peek_name(), Some("--sections")) {
+            parser.next_flag()?;
+            args.sections = Some(parse_report_sections(&parser.value_for("--sections")?)?);
+            continue;
+        }
         if parse_shared_arg_for_command(parser, &mut args.shared)? {
             continue;
         }

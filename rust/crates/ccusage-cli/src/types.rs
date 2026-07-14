@@ -74,6 +74,7 @@ pub fn normalize_date_bound(value: &str) -> String {
 #[derive(Clone)]
 pub struct DailyArgs {
     pub shared: SharedArgs,
+    pub sections: Option<Vec<AgentReportKind>>,
     pub instances: bool,
     pub project: Option<String>,
     pub project_aliases: Option<String>,

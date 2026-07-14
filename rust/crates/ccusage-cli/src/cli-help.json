@@ -225,6 +225,10 @@
 	],
 	"daily_options": [
 		{
+			"flags": "--sections <sections>",
+			"description": "Include additional Claude report sections in JSON output (choices: daily, weekly, monthly, session)"
+		},
+		{
 			"flags": "-i, --instances",
 			"description": "Show usage breakdown by project/instance",
 			"default": "false"

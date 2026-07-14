@@ -254,6 +254,32 @@ fn parses_unified_sections_and_by_agent_flags() {
 }
 
 #[test]
+fn parses_claude_daily_sections() {
+    let cli = parse(&[
+        "ccusage",
+        "claude",
+        "daily",
+        "--json",
+        "--sections",
+        "daily,monthly,session",
+    ]);
+    let Some(Command::Daily(args)) = cli.command else {
+        panic!("expected Claude daily command");
+    };
+    assert_eq!(
+        args.sections.as_deref(),
+        Some(
+            &[
+                AgentReportKind::Daily,
+                AgentReportKind::Monthly,
+                AgentReportKind::Session,
+            ][..]
+        )
+    );
+    assert!(args.shared.json);
+}
+
+#[test]
 fn parses_root_sections_and_by_agent_flags_without_daily_token() {
     let cli = parse(&[
         "ccusage",

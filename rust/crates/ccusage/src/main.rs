@@ -172,7 +172,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        cli::{CostMode, SharedArgs, SortOrder, WeekDay},
+        cli::{AgentReportKind, CostMode, DailyArgs, SharedArgs, SortOrder, WeekDay},
         cost::tiered_cost,
     };
 
@@ -479,6 +479,47 @@ mod tests {
                 .map(summary_json)
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn claude_multi_section_json_matches_legacy_report_shapes() {
+        let fixture = fs_fixture!({
+            "projects/project-a/session-a/chat.jsonl": r#"{"timestamp":"2026-05-22T02:34:40.000Z","version":"1.2.3","sessionId":"session-a","message":{"id":"msg_a","model":"claude-opus-4-6","usage":{"input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":3,"cache_read_input_tokens":4}},"requestId":"req_a","costUSD":0.12}"#,
+            "projects/project-b/session-b/chat.jsonl": r#"{"timestamp":"2026-06-01T03:00:00.000Z","version":"1.2.3","sessionId":"session-b","message":{"id":"msg_b","model":"claude-sonnet-4-6","usage":{"input_tokens":20,"output_tokens":5,"cache_creation_input_tokens":6,"cache_read_input_tokens":7}},"requestId":"req_b","costUSD":0.34}"#,
+        });
+
+        let _env = EnvVarGuard::set("CLAUDE_CONFIG_DIR", fixture.root());
+        let shared = SharedArgs {
+            json: true,
+            mode: CostMode::Display,
+            timezone: Some("UTC".to_string()),
+            ..SharedArgs::default()
+        };
+        let entries = load_entries(&shared, None).unwrap();
+        let args = DailyArgs {
+            shared,
+            sections: Some(vec![
+                AgentReportKind::Daily,
+                AgentReportKind::Monthly,
+                AgentReportKind::Session,
+            ]),
+            instances: false,
+            project: None,
+            project_aliases: None,
+        };
+
+        let report =
+            commands::claude_sections_json(&args, args.sections.as_deref().unwrap(), &entries)
+                .unwrap();
+
+        assert_eq!(report["daily"].as_array().unwrap().len(), 2);
+        assert_eq!(report["daily"][0]["date"], "2026-05-22");
+        assert_eq!(report["monthly"].as_array().unwrap().len(), 2);
+        assert_eq!(report["monthly"][0]["month"], "2026-05");
+        assert_eq!(report["sessions"].as_array().unwrap().len(), 2);
+        assert!(report["sessions"][0].get("sessionId").is_some());
+        assert!(report["sessions"][0].get("content").is_none());
+        assert_eq!(report["totals"]["totalCost"], 0.46);
     }
 
     #[test]
