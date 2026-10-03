@@ -152,7 +152,8 @@ jobs:
       - name: Secret scan and workflow lint
         run: nix build --print-build-logs .#checks.x86_64-linux.gitleaks .#checks.x86_64-linux.treefmt
 
-  test:
+  test-native:
+    name: Nix and Rust tests
     needs: [changes, tirith-scan, preflight]
     if: needs.changes.outputs.code-changed == 'true'
     runs-on: ubuntu-24.04
@@ -172,17 +173,52 @@ jobs:
             run: nix flake check --print-build-logs
           - name: Run Rust tests
             run: nix build .#ccusage-tests --print-build-logs
-          - name: JS test
-            run: |
-              nix profile install --inputs-from . .#pnpm nixpkgs#nodejs nixpkgs#just
-              pnpm install --frozen-lockfile
-              mkdir -p "$HOME/.claude/projects"
-              mkdir -p "$HOME/.config/claude/projects"
-              just test-node
           - name: Nushell contribution-gate tests
             run: .github/scripts/contribution-gate.test.nu
           - name: Babashka performance harness test
             run: apps/ccusage/scripts/compare-pr-performance_test.clj
+
+  # pnpm 12 is compiled from Rust. Keep its cold bootstrap off the host that
+  # concurrently compiles the repository's Rust checks, with the same time limit.
+  test-js:
+    name: JS tests
+    needs: [changes, tirith-scan, preflight]
+    if: needs.changes.outputs.code-changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix-cache
+      - name: JS test
+        run: |
+          nix profile install --print-build-logs --inputs-from . .#pnpm nixpkgs#nodejs nixpkgs#just
+          pnpm install --frozen-lockfile
+          mkdir -p "$HOME/.claude/projects"
+          mkdir -p "$HOME/.config/claude/projects"
+          just test-node
+
+  # Preserve the existing test signal: it cannot pass unless both hosts pass.
+  test:
+    needs: [changes, test-native, test-js]
+    if: always() && needs.changes.outputs.code-changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Require all test groups
+        env:
+          NATIVE_RESULT: ${{ needs.test-native.result }}
+          JS_RESULT: ${{ needs.test-js.result }}
+        run: |
+          test "$NATIVE_RESULT" = success
+          test "$JS_RESULT" = success
 
   build-native-packages:
     needs: [changes, tirith-scan, preflight]
