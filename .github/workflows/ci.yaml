@@ -185,7 +185,7 @@ jobs:
     needs: [changes, tirith-scan, preflight]
     if: needs.changes.outputs.code-changed == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     permissions:
       contents: read
       pull-requests: read
