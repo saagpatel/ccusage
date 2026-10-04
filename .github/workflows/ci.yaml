@@ -477,9 +477,10 @@ jobs:
       pull-requests: write
       issues: write
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           # Same benchmark from two entry points, posted as two PR comments:
@@ -503,8 +504,9 @@ jobs:
       - name: Setup Nix
         uses: ./.github/actions/setup-nix-cache
         with:
-          # js and rust legs share this job id, so scope the cache per runtime.
-          cache-scope: ${{ matrix.runtime }}
+          # Serialize the legs so the second can reuse the first leg's
+          # non-substitutable perf tools, including the pinned pnpm build.
+          cache-scope: ccusage-perf
       # This job only benchmarks the prebuilt ccusage binary bundled in the
       # installed pkg.pr.new package (no Rust build happens here), so the full
       # `nix develop` dev shell is unnecessary. Install just the tools the perf
