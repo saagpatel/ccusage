@@ -29,7 +29,7 @@ jobs:
   # the flake's pinned package so CI matches the dev shell.
   tirith-scan:
     name: tirith security scan
-    runs-on: blacksmith-32vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     # Read-only: this job executes PR-controlled code (the local action, the PR
     # flake, the installed tirith), so it must hold no write scopes. The SARIF
@@ -139,7 +139,7 @@ jobs:
   # gate can fail fast before any build/test work starts.
   preflight:
     name: security & lint preflight
-    runs-on: blacksmith-32vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -152,10 +152,11 @@ jobs:
       - name: Secret scan and workflow lint
         run: nix build --print-build-logs .#checks.x86_64-linux.gitleaks .#checks.x86_64-linux.treefmt
 
-  test:
+  test-native:
+    name: Nix and Rust tests
     needs: [changes, tirith-scan, preflight]
     if: needs.changes.outputs.code-changed == 'true'
-    runs-on: blacksmith-32vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -172,17 +173,52 @@ jobs:
             run: nix flake check --print-build-logs
           - name: Run Rust tests
             run: nix build .#ccusage-tests --print-build-logs
-          - name: JS test
-            run: |
-              nix profile install --inputs-from . .#pnpm nixpkgs#nodejs nixpkgs#just
-              pnpm install --frozen-lockfile
-              mkdir -p "$HOME/.claude/projects"
-              mkdir -p "$HOME/.config/claude/projects"
-              just test-node
           - name: Nushell contribution-gate tests
             run: .github/scripts/contribution-gate.test.nu
           - name: Babashka performance harness test
             run: apps/ccusage/scripts/compare-pr-performance_test.clj
+
+  # pnpm 12 is compiled from Rust. Keep its cold bootstrap off the host that
+  # concurrently compiles the repository's Rust checks, with the same time limit.
+  test-js:
+    name: JS tests
+    needs: [changes, tirith-scan, preflight]
+    if: needs.changes.outputs.code-changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix-cache
+      - name: JS test
+        run: |
+          nix profile install --print-build-logs --inputs-from . .#pnpm nixpkgs#nodejs nixpkgs#just
+          pnpm install --frozen-lockfile
+          mkdir -p "$HOME/.claude/projects"
+          mkdir -p "$HOME/.config/claude/projects"
+          just test-node
+
+  # Preserve the existing test signal: it cannot pass unless both hosts pass.
+  test:
+    needs: [changes, test-native, test-js]
+    if: always() && needs.changes.outputs.code-changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Require all test groups
+        env:
+          NATIVE_RESULT: ${{ needs.test-native.result }}
+          JS_RESULT: ${{ needs.test-js.result }}
+        run: |
+          test "$NATIVE_RESULT" = success
+          test "$JS_RESULT" = success
 
   build-native-packages:
     needs: [changes, tirith-scan, preflight]
@@ -198,27 +234,27 @@ jobs:
       matrix:
         include:
           - name: build-linux-arm64
-            os: blacksmith-32vcpu-ubuntu-2404-arm
+            os: ubuntu-24.04-arm
             platform: linux
             arch: arm64
             binary: result/bin/ccusage
           - name: build-linux-x64
-            os: blacksmith-32vcpu-ubuntu-2404
+            os: ubuntu-24.04
             platform: linux
             arch: x64
             binary: result/bin/ccusage
           - name: build-mac-arm64
-            os: blacksmith-12vcpu-macos-26
+            os: macos-26
             platform: darwin
             arch: arm64
             binary: result/bin/ccusage
           - name: build-mac-x64
-            os: blacksmith-12vcpu-macos-26
+            os: macos-26
             platform: darwin
             arch: x64
             binary: result/bin/ccusage
           - name: build-windows-x64
-            os: blacksmith-32vcpu-windows-2025
+            os: windows-2025
             platform: win32
             arch: x64
             binary: rust/target/release/ccusage.exe
@@ -252,7 +288,7 @@ jobs:
     permissions:
       actions: read
       contents: read
-    runs-on: blacksmith-32vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     outputs:
       urls: ${{ steps.publish.outputs.urls }}
       preview-url: ${{ steps.preview-url.outputs.url }}
@@ -282,7 +318,7 @@ jobs:
         # job is the only thing that runs it, and it never needs to resolve
         # against the workspace. Renovate does not update `dlx` specifiers, so
         # bump the pin here by hand.
-        run: pnpm dlx pkg-pr-new@0.0.75 publish --pnpm --bin './apps/ccusage' './packages/ccusage-linux-arm64' './packages/ccusage-linux-x64' './packages/ccusage-darwin-arm64' './packages/ccusage-darwin-x64' './packages/ccusage-win32-x64'
+        run: pnpm dlx pkg-pr-new@0.0.75 publish --pnpm --bin --no-compact './apps/ccusage' './packages/ccusage-linux-arm64' './packages/ccusage-linux-x64' './packages/ccusage-darwin-arm64' './packages/ccusage-darwin-x64' './packages/ccusage-win32-x64'
       # Resolve the ccusage CLI preview URL and build the E2E fixture here (this
       # job has the checkout); the E2E jobs then run without a checkout.
       - id: preview-url
@@ -328,13 +364,13 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - blacksmith-32vcpu-ubuntu-2404
-          - blacksmith-32vcpu-ubuntu-2404-arm
-          - blacksmith-12vcpu-macos-26
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+          - macos-26
           # Intel macOS to exercise the cross-built x86_64 darwin binary on real
           # Intel hardware (the build runner is arm64).
           - macos-15-intel
-          - blacksmith-32vcpu-windows-2025
+          - windows-2025
         # One job per package runner, each installed via its official action.
         # Excluded:
         #   yarn - no official install action (it expects corepack, which we avoid)
@@ -440,10 +476,11 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
-    runs-on: blacksmith-32vcpu-ubuntu-2404
-    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           # Same benchmark from two entry points, posted as two PR comments:
@@ -467,8 +504,9 @@ jobs:
       - name: Setup Nix
         uses: ./.github/actions/setup-nix-cache
         with:
-          # js and rust legs share this job id, so scope the cache per runtime.
-          cache-scope: ${{ matrix.runtime }}
+          # Serialize the legs so the second can reuse the first leg's
+          # non-substitutable perf tools, including the pinned pnpm build.
+          cache-scope: ccusage-perf
       # This job only benchmarks the prebuilt ccusage binary bundled in the
       # installed pkg.pr.new package (no Rust build happens here), so the full
       # `nix develop` dev shell is unnecessary. Install just the tools the perf
