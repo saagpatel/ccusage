@@ -13,6 +13,8 @@ on:
       - unlabeled
   workflow_dispatch:
 
+permissions: {}
+
 concurrency: tagpr
 
 jobs:
@@ -50,6 +52,8 @@ jobs:
     name: ${{ matrix.name }}
     needs: tagpr
     if: needs.tagpr.outputs.tag != ''
+    permissions:
+      contents: read
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:

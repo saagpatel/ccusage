@@ -8,10 +8,7 @@ on:
     types:
       - opened
 
-permissions:
-  contents: read
-  issues: read
-  pull-requests: read
+permissions: {}
 
 jobs:
   check-contributor:

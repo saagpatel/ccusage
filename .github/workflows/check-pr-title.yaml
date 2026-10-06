@@ -8,13 +8,14 @@ on:
       - edited
       - synchronize
 
-permissions:
-  pull-requests: read
+permissions: {}
 
 jobs:
   main:
     name: Validate PR title
     runs-on: ubuntu-slim
+    permissions:
+      pull-requests: read
     steps:
       - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
         env:
@@ -32,6 +33,8 @@ jobs:
     name: Validate PR title scope
     runs-on: ubuntu-slim
     timeout-minutes: 5
+    permissions:
+      pull-requests: read
     # Same exemptions as the job above, so the two title policies agree on which
     # pull requests they judge.
     if: >-
