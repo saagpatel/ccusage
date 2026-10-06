@@ -5,7 +5,8 @@ on:
     branches: [main]
   pull_request:
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   changes:
@@ -160,7 +161,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -188,7 +188,6 @@ jobs:
     timeout-minutes: 40
     permissions:
       contents: read
-      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -225,7 +224,6 @@ jobs:
     if: needs.changes.outputs.code-changed == 'true'
     name: ${{ matrix.name }}
     permissions:
-      actions: write
       contents: read
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -350,6 +348,9 @@ jobs:
     needs:
       - changes
       - npm-publish-dry-run-and-upload-pkg-pr-now
+    permissions:
+      actions: read
+      contents: read
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     # No checkout on purpose: the working directory stays empty so each package
@@ -582,6 +583,8 @@ jobs:
       - ccusage-perf-comment
     if: ${{ always() }}
     runs-on: ubuntu-slim
+    permissions:
+      actions: read
     steps:
       - uses: Kesin11/actions-timeline@57fc93f20c6da7fbc14063c6d24a2a5627c799ad # v3.2.0
 
